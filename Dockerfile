@@ -1,4 +1,4 @@
-FROM owncloud/base:bionic
+FROM owncloud/base:bionic-20181008
 
 LABEL maintainer="ownCloud DevOps <devops@owncloud.com>" \
   org.label-schema.name="ownCloud Server" \
