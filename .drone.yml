@@ -44,15 +44,60 @@ pipeline:
     detach: true
     environment:
       - DOCKER_HOST=tcp://docker:2375
+      - DEBUG=true
+      - OWNCLOUD_APPS_INSTALL=https://github.com/owncloud/testing/releases/download/latest/testing.tar.gz
+      - OWNCLOUD_APPS_ENABLE=testing
     commands:
-      - docker run -p 8000:8080 owncloud/server:${DRONE_COMMIT_SHA}-${DRONE_BUILD_NUMBER}
+      - docker network create oc
+      - docker run -p 8000:8080 -e DEBUG -e OWNCLOUD_APPS_INSTALL -e OWNCLOUD_APPS_ENABLE --network=oc owncloud/server:${DRONE_COMMIT_SHA}-${DRONE_BUILD_NUMBER}
 
-  test:
+  smoketest-start-mailhog:
+    image: toolhippie/docker:latest
+    pull: true
+    detach: true
+    environment:
+      - DOCKER_HOST=tcp://docker:2375
+    commands:
+      - docker run -p 1025:1025 -p 8025:8025 --network=oc --network-alias email --name email mailhog/mailhog
+
+  prepare-acceptance-tests:
+    image: owncloudci/php
+    pull: true
+    commands:
+      - mkdir -p /drone/owncloud-smoketest
+      - wget -qO- "https://download.owncloud.org/community/owncloud-daily-stable10-qa.tar.bz2" | tar -xj -C /drone/owncloud-smoketest --strip 1
+
+  wait-for-owncloud:
     image: owncloud/ubuntu:latest
     pull: true
     commands:
       - wait-for-it -t 600 docker:8000
-      - curl -sSf http://docker:8000/status.php
+
+  run-api-smoke-test:
+     image: owncloudci/php
+     pull: true
+     environment:
+      - TEST_SERVER_URL=http://docker:8000
+      - SKELETON_DIR=/mnt/data/apps/testing/data/apiSkeleton
+     commands:
+      - cd /drone/owncloud-smoketest/tests/acceptance
+      - bash run.sh --remote --tags "@smokeTest&&~@skip" --type api
+
+  run-ui-smoke-test:
+    image: owncloudci/php
+    pull: true
+    environment:
+     - BROWSER=chrome
+     - SELENIUM_HOST=selenium
+     - SELENIUM_PORT=4444
+     - PLATFORM=Linux
+     - MAILHOG_HOST=email
+     - LOCAL_MAILHOG_HOST=docker
+     - TEST_SERVER_URL=http://docker:8000
+     - SKELETON_DIR=/mnt/data/apps/testing/data/webUISkeleton
+    commands:
+     - cd /drone/owncloud-smoketest/tests/acceptance
+     - bash run.sh --remote --tags "@smokeTest&&~@skip" --type webUI
 
   prepublish:
     image: toolhippie/docker:latest
@@ -136,3 +181,7 @@ pipeline:
 services:
   docker:
     image: docker:18.04-dind
+
+  selenium:
+    image: selenium/standalone-chrome-debug:latest
+    pull: true
