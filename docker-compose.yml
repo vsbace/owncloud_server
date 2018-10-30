@@ -1,6 +1,5 @@
 version: '2.1'
 
-
 services:
   owncloud:
     image: owncloud/server:${OWNCLOUD_VERSION}
